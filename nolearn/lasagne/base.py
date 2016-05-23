@@ -611,8 +611,8 @@ class NeuralNet(BaseEstimator):
             if want_dataset:
                 X_valid_epoch = np.zeros_like(X_valid)
                 y_valid_epoch = np.zeros_like(y_valid)
-                y_predict = np.zeros_like(y_valid)
-                y_predict_row = 0
+                y_valid_prob_epoch = np.zeros_like(y_valid)
+                batch_start = 0
 
             batch_valid_sizes = []
             for Xb, yb in self.batch_iterator_test(X_valid, y_valid):
@@ -626,10 +626,11 @@ class NeuralNet(BaseEstimator):
                     y_prob = self.apply_batch_func(self.predict_iter_, Xb)
 
                     if want_dataset:
-                        y_valid_epoch[y_predict_row:y_predict_row+len(yb), :, :, :] = yb
-                        X_valid_epoch[y_predict_row:y_predict_row+len(yb), :, :, :] = Xb
-                        y_predict[y_predict_row:y_predict_row+len(yb), :, :, :] = y_prob
-                        y_predict_row += len(yb)
+                        batch_limit = batch_start + len(Xb)
+                        X_valid_epoch[batch_start:batch_limit, :, :, :] = Xb
+                        y_valid_epoch[batch_start:batch_limit, :, :, :] = yb
+                        y_valid_prob_epoch[batch_start:batch_limit, :, :, :] = y_prob
+                        batch_start = batch_limit
 
                     if self.custom_scores:
                         for custom_scorer, custom_score in zip(
@@ -671,7 +672,7 @@ class NeuralNet(BaseEstimator):
             try:
                 for func in on_epoch_finished:
                     if want_dataset and self._has_dataset_args(func):
-                        func(self, self.train_history_, X_valid_epoch, y_valid_epoch, y_predict)
+                        func(self, self.train_history_, X_valid_epoch, y_valid_epoch, y_valid_prob_epoch)
                     else:
                         func(self, self.train_history_)
             except StopIteration:
