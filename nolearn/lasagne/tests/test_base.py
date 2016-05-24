@@ -417,7 +417,7 @@ class TestTrainTestSplitBackwardCompatibility:
             def train_test_split(self, X, y, eval_size):
                 self.__call_args__ = (X, y, eval_size)
                 split = int(X.shape[0] * eval_size)
-                return X[:split], X[split:], y[:split], y[split:]
+                return X[:split], X[split:], y[:split], y[split:], None
         return LegacyNet
 
     def test_legacy_eval_size(self, NeuralNet):
@@ -427,13 +427,13 @@ class TestTrainTestSplitBackwardCompatibility:
     def test_legacy_method_default_eval_size(self, LegacyNet):
         net = LegacyNet([], max_epochs=0)
         X, y = np.ones((10, 3)), np.zeros(10)
-        net.train_loop(X, y)
+        net.train_loop(X, y, None, None)
         assert net.__call_args__ == (X, y, 0.2)
 
     def test_legacy_method_given_eval_size(self, LegacyNet):
         net = LegacyNet([], eval_size=0.3, max_epochs=0)
         X, y = np.ones((10, 3)), np.zeros(10)
-        net.train_loop(X, y)
+        net.train_loop(X, y, None, None)
         assert net.__call_args__ == (X, y, 0.3)
 
 
