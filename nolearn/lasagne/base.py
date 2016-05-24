@@ -76,7 +76,7 @@ class BatchIterator(object):
 
     def __call__(self, X, y=None, info=None):
         if self.shuffle:
-            self._shuffle_arrays(filter(lambda a: a is not None, [X, y, info]), self.random)
+            self._shuffle_arrays([a for a in [X, y, info] if a is not None], self.random)
         self.X, self.y, self.info = X, y, info
         return self
 
@@ -153,7 +153,7 @@ class TrainSplit(object):
             train_indices, valid_indices = next(iter(kf))
             X_train, y_train = _sldict(X, train_indices), y[train_indices]
             X_valid, y_valid = _sldict(X, valid_indices), y[valid_indices]
-            info_valid = list(np.array(info)[valid_indices]) if label_key else None
+            info_valid = [info[i] for i in valid_indices] if info else None
         else:
             X_train, y_train = X, y
             X_valid, y_valid = _sldict(X, slice(len(y), None)), y[len(y):]
@@ -370,7 +370,7 @@ class NeuralNet(BaseEstimator):
                 raise ValueError("X and info are not of equal length.")
             
         if label_key is not None:
-            if not info or [True for info_dict in info if label_key not in info_dict]:
+            if not info or any(label_key not in info_dict for info_dict in info):
                 raise ValueError("label_key '{}' is not a key in every element of info".format(label_key))
 
         return X, y, info, label_key
