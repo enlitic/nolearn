@@ -74,10 +74,10 @@ class BatchIterator(object):
         self.shuffle = shuffle
         self.random = np.random.RandomState(seed)
 
-    def __call__(self, X, y=None, info=None):
+    def __call__(self, X, y=None, X_info=None):
         if self.shuffle:
-            self._shuffle_arrays([a for a in [X, y, info] if a is not None], self.random)
-        self.X, self.y, self.info = X, y, info
+            self._shuffle_arrays([a for a in [X, y, X_info] if a is not None], self.random)
+        self.X, self.y, self.X_info = X, y, X_info
         return self
 
     def __iter__(self):
@@ -89,11 +89,11 @@ class BatchIterator(object):
                 yb = self.y[sl]
             else:
                 yb = None
-            if self.info is not None:
-                infob = np.array(self.info)[sl]
+            if self.X_info is not None:
+                Xinfob = np.array(self.X_info)[sl]
             else:
-                infob = None
-            yield self.transform(Xb, yb, infob)
+                Xinfob = None
+            yield self.transform(Xb, yb, Xinfob)
 
     @classmethod
     def _shuffle_arrays(cls, arrays, random):
@@ -115,12 +115,12 @@ class BatchIterator(object):
         else:
             return len(X)
 
-    def transform(self, Xb, yb, infob):
-        return Xb, yb, infob
+    def transform(self, Xb, yb, Xinfob):
+        return Xb, yb, Xinfob
 
     def __getstate__(self):
         state = dict(self.__dict__)
-        for attr in ('X', 'y', 'info',):
+        for attr in ('X', 'y', 'X_info',):
             if attr in state:
                 del state[attr]
         return state
@@ -137,13 +137,13 @@ class TrainSplit(object):
         self.eval_size = eval_size
         self.stratify = stratify
 
-    def __call__(self, X, y, info, label_key, net):
+    def __call__(self, X, y, X_info, label_key, net):
         if self.eval_size:
             if label_key is not None:
                 if self.stratify:
                     raise NotImplementedError("Can't support statified & labeled validation split")
 
-                labels = [info_dict[label_key] for info_dict in info]
+                labels = [info[label_key] for info in X_info]
                 kf = LabelKFold(labels, round(1. / self.eval_size))
             elif net.regression or not self.stratify:
                 kf = KFold(y.shape[0], round(1. / self.eval_size))
@@ -153,13 +153,13 @@ class TrainSplit(object):
             train_indices, valid_indices = next(iter(kf))
             X_train, y_train = _sldict(X, train_indices), y[train_indices]
             X_valid, y_valid = _sldict(X, valid_indices), y[valid_indices]
-            info_valid = [info[i] for i in valid_indices] if info else None
+            X_info_valid = [X_info[i] for i in valid_indices] if X_info else None
         else:
             X_train, y_train = X, y
             X_valid, y_valid = _sldict(X, slice(len(y), None)), y[len(y):]
-            info_valid = info[len(y):]
+            X_info_valid = X_info[len(y):]
 
-        return X_train, X_valid, y_train, y_valid, info_valid
+        return X_train, X_valid, y_train, y_valid, X_info_valid
 
 
 class LegacyTrainTestSplit(object):  # BBB
@@ -349,7 +349,7 @@ class NeuralNet(BaseEstimator):
             else:
                 raise ValueError("Unused kwarg: {}".format(k))
 
-    def _check_good_input(self, X, y=None, info=None, label_key=None):
+    def _check_good_input(self, X, y=None, X_info=None, label_key=None):
         if isinstance(X, dict):
             lengths = [len(X1) for X1 in X.values()]
             if len(set(lengths)) > 1:
@@ -365,15 +365,15 @@ class NeuralNet(BaseEstimator):
         if self.regression and y is not None and y.ndim == 1:
             y = y.reshape(-1, 1)
 
-        if info is not None:
-            if len(info) != x_len:
-                raise ValueError("X and info are not of equal length.")
+        if X_info is not None:
+            if len(X_info) != x_len:
+                raise ValueError("X and X_info are not of equal length.")
             
         if label_key is not None:
-            if not info or any(label_key not in info_dict for info_dict in info):
-                raise ValueError("label_key '{}' is not a key in every element of info".format(label_key))
+            if not X_info or any(label_key not in info_dict for info_dict in X_info):
+                raise ValueError("label_key '{}' is not a key in every element of X_info".format(label_key))
 
-        return X, y, info, label_key
+        return X, y, X_info, label_key
 
     def initialize(self):
         if getattr(self, '_initialized', False):
@@ -538,9 +538,9 @@ class NeuralNet(BaseEstimator):
 
         return train_iter, eval_iter, predict_iter
 
-    def fit(self, X, y, info=None, label_key=None, epochs=None):
+    def fit(self, X, y, X_info=None, label_key=None, epochs=None):
         if self.check_input:
-            X, y, info, label_key = self._check_good_input(X, y, info, label_key)
+            X, y, X_info, label_key = self._check_good_input(X, y, X_info, label_key)
 
         if self.use_label_encoder:
             self.enc_ = LabelEncoder()
@@ -549,7 +549,7 @@ class NeuralNet(BaseEstimator):
         self.initialize()
 
         try:
-            self.train_loop(X, y, info, label_key, epochs=epochs)
+            self.train_loop(X, y, X_info, label_key, epochs=epochs)
         except KeyboardInterrupt:
             pass
         return self
@@ -557,9 +557,9 @@ class NeuralNet(BaseEstimator):
     def partial_fit(self, X, y, classes=None):
         return self.fit(X, y, epochs=1)
 
-    def train_loop(self, X, y, info, label_key, epochs=None):
+    def train_loop(self, X, y, X_info, label_key, epochs=None):
         epochs = epochs or self.max_epochs
-        X_train, X_valid, y_train, y_valid, info_valid = self.train_split(X, y, info, label_key, self)
+        X_train, X_valid, y_train, y_valid, info_valid = self.train_split(X, y, X_info, label_key, self)
 
         on_batch_finished = self.on_batch_finished
         if not isinstance(on_batch_finished, (list, tuple)):
@@ -620,11 +620,11 @@ class NeuralNet(BaseEstimator):
                 X_valid_epoch = np.zeros_like(X_valid)
                 y_valid_epoch = np.zeros_like(y_valid)
                 y_valid_prob_epoch = np.zeros_like(y_valid)
-                info_valid_epoch = []
+                X_info_valid_epoch = []
                 batch_start = 0
 
             batch_valid_sizes = []
-            for Xb, yb, infob in self.batch_iterator_test(X_valid, y_valid, info_valid):
+            for Xb, yb, Xinfob in self.batch_iterator_test(X_valid, y_valid, info_valid):
                 batch_valid_loss, accuracy = self.apply_batch_func(
                     self.eval_iter_, Xb, yb)
                 valid_losses.append(batch_valid_loss)
@@ -639,7 +639,7 @@ class NeuralNet(BaseEstimator):
                         X_valid_epoch[batch_start:batch_limit, :, :, :] = Xb
                         y_valid_epoch[batch_start:batch_limit, :, :, :] = yb
                         y_valid_prob_epoch[batch_start:batch_limit, :, :, :] = y_prob
-                        info_valid_epoch.extend(list(infob))
+                        X_info_valid_epoch.extend(list(Xinfob))
                         batch_start = batch_limit
 
                     if self.custom_scores:
@@ -682,7 +682,7 @@ class NeuralNet(BaseEstimator):
             try:
                 for func in on_epoch_finished:
                     if want_dataset and self._has_dataset_args(func):
-                        func(self, self.train_history_, X_valid_epoch, y_valid_epoch, y_valid_prob_epoch, info_valid_epoch)
+                        func(self, self.train_history_, X_valid_epoch, y_valid_epoch, y_valid_prob_epoch, X_info_valid_epoch)
                     else:
                         func(self, self.train_history_)
             except StopIteration:
@@ -693,7 +693,7 @@ class NeuralNet(BaseEstimator):
 
     @staticmethod
     def _has_dataset_args(callable_obj):
-        """Return True if the given callable object has args for X, y, y_predict, info.
+        """Return True if the given callable object has args for X, y, y_predict, X_info.
 
         'Normal' on_epoch_finished handlers have 3 args, (self, nn, train_history). Look
         for four more args and return True if found. We don't care what they are named.
