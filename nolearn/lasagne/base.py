@@ -619,7 +619,7 @@ class NeuralNet(BaseEstimator):
             if want_dataset:
                 X_valid_epoch = np.zeros_like(X_valid)
                 y_valid_epoch = np.zeros_like(y_valid)
-                y_valid_prob_epoch = np.zeros_like(y_valid)
+                y_valid_prob_epoch = np.zeros_like(X_valid)
                 X_info_valid_epoch = []
                 batch_start = 0
 
@@ -722,7 +722,7 @@ class NeuralNet(BaseEstimator):
 
     def predict_proba(self, X):
         probas = []
-        for Xb, yb in self.batch_iterator_test(X):
+        for Xb, _, _ in self.batch_iterator_test(X):
             probas.append(self.apply_batch_func(self.predict_iter_, Xb))
         return np.vstack(probas)
 
@@ -752,7 +752,7 @@ class NeuralNet(BaseEstimator):
             get_activity = fn_cache[layer]
 
         outputs = []
-        for Xb, yb in self.batch_iterator_test(X):
+        for Xb, _, _ in self.batch_iterator_test(X):
             outputs.append(get_activity(Xb))
         return np.vstack(outputs)
 
